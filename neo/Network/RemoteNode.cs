@@ -43,6 +43,11 @@ namespace Neo.Network
             this.localNode = localNode;
         }
 
+        protected void Log(string text)
+        {
+            this.localNode.Log(text);
+        }
+
         public virtual void Disconnect(bool error)
         {
             if (Interlocked.Exchange(ref disposed, 1) == 0)
@@ -287,6 +292,10 @@ namespace Neo.Network
             EnqueueMessage("inv", InvPayload.Create(InventoryType.TX, LocalNode.GetMemoryPool().Select(p => p.Hash).ToArray()));
         }
 
+        /// <summary>
+        /// 对接收信息进程路由
+        /// </summary>
+        /// <param name="message"></param>
         private void OnMessageReceived(Message message)
         {
             switch (message.Command)
@@ -455,6 +464,7 @@ namespace Neo.Network
                 {
                     if (missions.Count == 0 && Blockchain.Default.Height < Version.StartHeight)
                     {
+                        // 请求区块链同步
                         EnqueueMessage("getblocks", GetBlocksPayload.Create(Blockchain.Default.CurrentBlockHash));
                     }
                 }
@@ -484,6 +494,9 @@ namespace Neo.Network
             }
         }
 
+        /// <summary>
+        /// 发送命令任务
+        /// </summary>
         private async void StartSendLoop()
         {
 #if !NET47
@@ -495,17 +508,20 @@ namespace Neo.Network
                 Message message = null;
                 lock (message_queue_high)
                 {
+                    // 高优先级消息队列不为空
                     if (message_queue_high.Count > 0)
                     {
                         message = message_queue_high.Dequeue();
                     }
                 }
+                // 没有高优先级任务
                 if (message == null)
                 {
                     lock (message_queue_low)
                     {
                         if (message_queue_low.Count > 0)
                         {
+                            // 获取低优先级任务
                             message = message_queue_low.Dequeue();
                         }
                     }

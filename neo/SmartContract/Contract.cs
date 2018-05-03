@@ -52,6 +52,12 @@ namespace Neo.SmartContract
             }
         }
 
+        /// <summary>
+        /// 创建合约
+        /// </summary>
+        /// <param name="parameterList"></param>
+        /// <param name="redeemScript"></param>
+        /// <returns></returns>
         public static Contract Create(ContractParameterType[] parameterList, byte[] redeemScript)
         {
             return new Contract
@@ -87,6 +93,11 @@ namespace Neo.SmartContract
             }
         }
 
+        /// <summary>
+        /// 创建签名合约
+        /// </summary>
+        /// <param name="publicKey"></param>
+        /// <returns></returns>
         public static Contract CreateSignatureContract(ECPoint publicKey)
         {
             return new Contract

@@ -22,6 +22,9 @@ using System.Threading.Tasks;
 
 namespace Neo.Network
 {
+    /// <summary>
+    /// P2P网络建立并管理与远程节点的连接
+    /// </summary>
     public class LocalNode : IDisposable
     {
         public static event EventHandler<InventoryReceivingEventArgs> InventoryReceiving;
@@ -59,7 +62,8 @@ namespace Neo.Network
         public bool ServiceEnabled { get; set; } = true;
         public bool UpnpEnabled { get; set; } = false;
         public string UserAgent { get; set; }
-
+        public static IList<string> LogList = new List<string>(); // Add code
+        public Thread addLog;// Add code
         static LocalNode()
         {
             LocalAddresses.UnionWith(NetworkInterface.GetAllNetworkInterfaces().SelectMany(p => p.GetIPProperties().UnicastAddresses).Select(p => p.Address.MapToIPv6()));
@@ -82,10 +86,18 @@ namespace Neo.Network
                     Name = "LocalNode.AddTransactionLoop"
                 };
             }
+            //this.addLog = new Thread(writeLogLoop)
+            //{
+            //    IsBackground = true,
+            //    Name = "LocalNode.WriteLogLoop"
+            //};
             this.UserAgent = string.Format("/NEO:{0}/", GetType().GetTypeInfo().Assembly.GetName().Version.ToString(3));
             Blockchain.PersistCompleted += Blockchain_PersistCompleted;
         }
 
+        /// <summary>
+        /// 接受连接
+        /// </summary>
         private async void AcceptPeers()
         {
 #if !NET47
@@ -232,6 +244,12 @@ namespace Neo.Network
                 mem_pool.Remove(hash);
         }
 
+        /// <summary>
+        /// 连接到远程机器
+        /// </summary>
+        /// <param name="hostNameOrAddress"></param>
+        /// <param name="port"></param>
+        /// <returns></returns>
         public async Task ConnectToPeerAsync(string hostNameOrAddress, int port)
         {
             IPAddress ipAddress;
@@ -268,6 +286,7 @@ namespace Neo.Network
                 if (connectedPeers.Any(p => remoteEndpoint.Equals(p.ListenerEndpoint)))
                     return;
             }
+            // 新建远程节点对象
             TcpRemoteNode remoteNode = new TcpRemoteNode(this, remoteEndpoint);
             if (await remoteNode.ConnectAsync())
             {
@@ -275,6 +294,9 @@ namespace Neo.Network
             }
         }
 
+        /// <summary>
+        /// 向所有的本地节点建立连接的节点广播网络节点的请求
+        /// </summary>
         private void ConnectToPeersLoop()
         {
             while (!cancellationTokenSource.IsCancellationRequested)
@@ -431,10 +453,10 @@ namespace Neo.Network
             {
                 connectedPeers.Add(remoteNode);
             }
-            remoteNode.Disconnected += RemoteNode_Disconnected;
-            remoteNode.InventoryReceived += RemoteNode_InventoryReceived;
-            remoteNode.PeersReceived += RemoteNode_PeersReceived;
-            remoteNode.StartProtocol();
+            remoteNode.Disconnected += RemoteNode_Disconnected;// 断开连接通知
+            remoteNode.InventoryReceived += RemoteNode_InventoryReceived;// 账单消息通知
+            remoteNode.PeersReceived += RemoteNode_PeersReceived;// 节点列表信息通知
+            remoteNode.StartProtocol();// 开启通信协议
         }
 
         private async Task ProcessWebSocketAsync(HttpContext context)
@@ -445,6 +467,11 @@ namespace Neo.Network
             OnConnected(remoteNode);
         }
 
+        /// <summary>
+        /// 广播新区块
+        /// </summary>
+        /// <param name="inventory"></param>
+        /// <returns></returns>
         public bool Relay(IInventory inventory)
         {
             if (inventory is MinerTransaction) return false;
@@ -592,6 +619,31 @@ namespace Neo.Network
             }
         }
 
+        public void Log(string text)
+        {
+            if (addLog is null)
+            {
+                LogList = new List<string>();
+                
+            }
+            //LogList.Add($"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}\t\t{text} \r\n");
+            //System.IO.File.AppendAllText("node.log", $"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}\t\t{text} \r\n");
+        }
+
+        public void writeLogLoop()
+        {
+            while(true)
+            {
+                if (LogList.Count() > 0)
+                {
+                    var log = LogList[0];
+                    LogList.RemoveAt(0);
+                    System.IO.File.AppendAllText("node.log", log);
+                }
+                Thread.Sleep(1000);
+            }
+        }
+
         public void Start(int port = 0, int ws_port = 0)
         {
             if (Interlocked.Exchange(ref started, 1) == 0)
@@ -605,27 +657,32 @@ namespace Neo.Network
                     {
                         try
                         {
-                            LocalAddresses.Add(await UPnP.GetExternalIPAsync());
+                            LocalAddresses.Add(await UPnP.GetExternalIPAsync());// 添加获取到的网络中节点信息
                             if (port > 0)
-                                await UPnP.ForwardPortAsync(port, ProtocolType.Tcp, "NEO");
+                                await UPnP.ForwardPortAsync(port, ProtocolType.Tcp, "NEO");// 向服务器注册本地节点
                             if (ws_port > 0)
                                 await UPnP.ForwardPortAsync(ws_port, ProtocolType.Tcp, "NEO WebSocket");
                         }
-                        catch { }
+                        catch {
+                            Console.WriteLine("向服务器注册本地节点失败~^_^");
+                        }
                     }
-                    connectThread.Start();
+                    connectThread.Start(); // 开启线程与网络中节点建立连接
                     poolThread?.Start();
+                    //this.addLog.Start();// 记录日志
                     if (port > 0)
                     {
-                        listener = new TcpListener(IPAddress.Any, port);
+                        listener = new TcpListener(IPAddress.Any, port);// 开启服务 监听网络中的广播信息
                         listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, 1);
                         try
                         {
-                            listener.Start();
+                            listener.Start();// 开启端口，监听连接请求
                             Port = (ushort)port;
-                            AcceptPeers();
+                            AcceptPeers();// 处理 p2p 网络中的 socket 连接请求
                         }
-                        catch (SocketException) { }
+                        catch (SocketException) {
+                            Console.WriteLine("Socket Exception~");
+                        }
                     }
                     if (ws_port > 0)
                     {

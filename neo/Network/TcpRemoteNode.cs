@@ -39,7 +39,7 @@ namespace Neo.Network
                 await socket.ConnectAsync(address, ListenerEndpoint.Port);
                 OnConnected();
             }
-            catch (SocketException)
+            catch (SocketException e)
             {
                 Disconnect(false);
                 return false;

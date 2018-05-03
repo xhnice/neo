@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace Neo.Cryptography
 {
@@ -250,7 +251,60 @@ namespace Neo.Cryptography
         {
             return Replicon.Cryptography.SCrypt.SCrypt.DeriveKey(password, salt, (ulong)N, (uint)r, (uint)p, (uint)derivedKeyLength);
         }
+
+        // Add code override
+        public static byte[] DeriveKey(byte[] salt, int N, int r, int p, int derivedKeyLength)
+        {
+            // 初步验证  Replicon.Cryptography.SCrypt.SCrypt.DeriveKey 方法的 password 可以为空
+            return Replicon.Cryptography.SCrypt.SCrypt.DeriveKey(Encoding.ASCII.GetBytes(""), salt, (ulong)N, (uint)r, (uint)p, (uint)derivedKeyLength);
+        }
 #else
+        /// <summary>
+        /// 不需要密码生成私钥
+        /// Add Code override
+        /// </summary>
+        /// <param name="salt"></param>
+        /// <param name="N"></param>
+        /// <param name="r"></param>
+        /// <param name="p"></param>
+        /// <param name="derivedKeyLength"></param>
+        /// <returns></returns>
+        public unsafe static byte[] DeriveKey(byte[] salt, int N, int r, int p, int derivedKeyLength)
+        {
+            byte[] password = null;
+            var Ba = new byte[128 * r * p + 63];
+            var XYa = new byte[256 * r + 63];
+            var Va = new byte[128 * r * N + 63];
+            var buf = new byte[derivedKeyLength];
+
+            // HMACSHA256 一种是从 sha-256 哈希函数构造， 用作基于哈希的消息验证代码的加密哈希算法。
+            // HMAC 过程将与消息数据的机密密钥、哈希结果与哈希函数，同样，与该密钥组合该哈希值，然后将哈希函数应用第二次。
+            // 输出哈希值为256位的长度
+            //var mac = new HMACSHA256(password); // 使用指定的密钥初始化HMACSHA256类的新实例
+            // 设置默认密码
+            password = Encoding.Default.GetBytes("123456");
+            var mac = new HMACSHA256(password); // 不使用密码
+            /* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
+            PBKDF2_SHA256(mac, password, salt, salt.Length, 1, Ba, p * 128 * r);
+
+            fixed (byte* B = Ba)
+            fixed (void* V = Va)
+            fixed (void* XY = XYa)
+            {
+                /* 2: for i = 0 to p - 1 do */
+                for (var i = 0; i < p; i++)
+                {
+                    /* 3: B_i <-- MF(B_i, N) */
+                    SMix(&B[i * 128 * r], r, N, (uint*)V, (uint*)XY);
+                }
+            }
+
+            /* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
+            PBKDF2_SHA256(mac, password, Ba, p * 128 * r, 1, buf, buf.Length);
+
+            return buf;
+        }
+
         public unsafe static byte[] DeriveKey(byte[] password, byte[] salt, int N, int r, int p, int derivedKeyLength)
         {
             var Ba = new byte[128 * r * p + 63];
@@ -258,8 +312,11 @@ namespace Neo.Cryptography
             var Va = new byte[128 * r * N + 63];
             var buf = new byte[derivedKeyLength];
 
-            var mac = new HMACSHA256(password);
-
+            // HMACSHA256 一种是从 sha-256 哈希函数构造， 用作基于哈希的消息验证代码的加密哈希算法。
+            // HMAC 过程将与消息数据的机密密钥、哈希结果与哈希函数，同样，与该密钥组合该哈希值，然后将哈希函数应用第二次。
+            // 输出哈希值为256位的长度
+            var mac = new HMACSHA256(password); // 使用指定的密钥初始化HMACSHA256类的新实例
+            //var mac = new HMACSHA256(); // 不使用密码
             /* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
             PBKDF2_SHA256(mac, password, salt, salt.Length, 1, Ba, p * 128 * r);
 
@@ -286,6 +343,7 @@ namespace Neo.Cryptography
         {
             if (derivedKeyLength > (Math.Pow(2, 32) - 1) * 32)
             {
+                Console.WriteLine($"Requested key length too long {derivedKeyLength}");
                 throw new ArgumentException("Requested key length too long");
             }
 

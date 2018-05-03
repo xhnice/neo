@@ -46,9 +46,13 @@ namespace Neo.Consensus
                 if (Blockchain.GetConsensusAddress(Blockchain.Default.GetValidators(context.Transactions.Values).ToArray()).Equals(context.NextConsensus))
                 {
                     Log($"send perpare response");
+                    // 设置共识状态为已发送签名
                     context.State |= ConsensusState.SignatureSent;
+                    // 添加本地签名到签名列表
                     context.Signatures[context.MyIndex] = context.MakeHeader().Sign(context.KeyPair);
+                    // 广播共识响应
                     SignAndRelay(context.MakePrepareResponse(context.Signatures[context.MyIndex]));
+                    // 检查签名状态是否符合共识要求
                     CheckSignatures();
                 }
                 else
@@ -81,12 +85,19 @@ namespace Neo.Consensus
             return true;
         }
 
+        /// <summary>
+        /// 验证共识协商结果
+        /// </summary>
         private void CheckSignatures()
         {
+            // 验证当前已进行的协商的共识节点数是否合法
             if (context.Signatures.Count(p => p != null) >= context.M && context.TransactionHashes.All(p => context.Transactions.ContainsKey(p)))
             {
+                // 建立合约
                 Contract contract = Contract.CreateMultiSigContract(context.M, context.Validators);
+                // 创建新的区块
                 Block block = context.MakeHeader();
+                // 设置区块参数
                 ContractParametersContext sc = new ContractParametersContext(block);
                 for (int i = 0, j = 0; i < context.Validators.Length && j < context.M; i++)
                     if (context.Signatures[i] != null)
@@ -94,11 +105,14 @@ namespace Neo.Consensus
                         sc.AddSignature(contract, context.Validators[i], context.Signatures[i]);
                         j++;
                     }
+                // 获取用于验证区块的脚本
                 sc.Verifiable.Scripts = sc.GetScripts();
                 block.Transactions = context.TransactionHashes.Select(p => context.Transactions[p]).ToArray();
                 Log($"relay block: {block.Hash}");
+                // 广播新区块
                 if (!localNode.Relay(block))
                     Log($"reject block: {block.Hash}");
+                // 设置当前共识状态为新区块广播
                 context.State |= ConsensusState.BlockSent;
             }
         }
@@ -183,17 +197,19 @@ namespace Neo.Consensus
                     }
                     timer_height = context.BlockIndex;
                     timer_view = view_number;
+                    // 议长发起共识时间控制
                     TimeSpan span = DateTime.Now - block_received_time;
                     if (span >= Blockchain.TimePerBlock)
-                        timer.Change(0, Timeout.Infinite);
+                        timer.Change(0, Timeout.Infinite);// 间隔时间大于预订时间则立即发起共识
                     else
-                        timer.Change(Blockchain.TimePerBlock - span, Timeout.InfiniteTimeSpan);
+                        timer.Change(Blockchain.TimePerBlock - span, Timeout.InfiniteTimeSpan);// 定时执行
                 }
                 else
                 {
                     context.State = ConsensusState.Backup;
                     timer_height = context.BlockIndex;
                     timer_view = view_number;
+                    // 议员超时控制 t * 2 ^ (view_number + 1)
                     timer.Change(TimeSpan.FromSeconds(Blockchain.SecondsPerBlock << (view_number + 1)), Timeout.InfiniteTimeSpan);
                 }
             }
@@ -273,42 +289,61 @@ namespace Neo.Consensus
         {
         }
 
+        /// <summary>
+        /// 议员收到更新视图的请求
+        /// </summary>
+        /// <param name="payload"></param>
+        /// <param name="message"></param>
         private void OnChangeViewReceived(ConsensusPayload payload, ChangeView message)
         {
             Log($"{nameof(OnChangeViewReceived)}: height={payload.BlockIndex} view={message.ViewNumber} index={payload.ValidatorIndex} nv={message.NewViewNumber}");
+            // 消息中新视图编号比当前所记录的视图编号还小则为过时消息
             if (message.NewViewNumber <= context.ExpectedView[payload.ValidatorIndex])
                 return;
+            // 更新目标议员期望视图编号
             context.ExpectedView[payload.ValidatorIndex] = message.NewViewNumber;
+            // 检查是否符合更新视图要求
             CheckExpectedView(message.NewViewNumber);
         }
 
+        /// <summary>
+        /// 收到议长共识请求
+        /// </summary>
+        /// <param name="payload">议长的共识参数</param>
+        /// <param name="message"></param>
         private void OnPrepareRequestReceived(ConsensusPayload payload, PrepareRequest message)
         {
             Log($"{nameof(OnPrepareRequestReceived)}: height={payload.BlockIndex} view={message.ViewNumber} index={payload.ValidatorIndex} tx={message.TransactionHashes.Length}");
+            // 当前不处于退回状态或者已经收到了重置请求
             if (!context.State.HasFlag(ConsensusState.Backup) || context.State.HasFlag(ConsensusState.RequestReceived))
                 return;
+            // 只接受议长发起的共识请求
             if (payload.ValidatorIndex != context.PrimaryIndex) return;
             if (payload.Timestamp <= Blockchain.Default.GetHeader(context.PrevHash).Timestamp || payload.Timestamp > DateTime.Now.AddMinutes(10).ToTimestamp())
             {
                 Log($"Timestamp incorrect: {payload.Timestamp}");
                 return;
             }
-            context.State |= ConsensusState.RequestReceived;
-            context.Timestamp = payload.Timestamp;
-            context.Nonce = message.Nonce;
-            context.NextConsensus = message.NextConsensus;
-            context.TransactionHashes = message.TransactionHashes;
+            context.State |= ConsensusState.RequestReceived; // 设置状态为收到议长共识请求
+            context.Timestamp = payload.Timestamp;// 时间戳同步
+            context.Nonce = message.Nonce; // 区块随机数同步
+            context.NextConsensus = message.NextConsensus; 
+            context.TransactionHashes = message.TransactionHashes; // 交易哈希
             context.Transactions = new Dictionary<UInt256, Transaction>();
+            // 议长公钥验证
             if (!Crypto.Default.VerifySignature(context.MakeHeader().GetHashData(), message.Signature, context.Validators[payload.ValidatorIndex].EncodePoint(false))) return;
+            // 添加议长签名到议员签名列表
             context.Signatures = new byte[context.Validators.Length][];
             context.Signatures[payload.ValidatorIndex] = message.Signature;
+            // 将内存缓存的交易添加到共识的 context 中
             Dictionary<UInt256, Transaction> mempool = LocalNode.GetMemoryPool().ToDictionary(p => p.Hash);
             foreach (UInt256 hash in context.TransactionHashes.Skip(1))
             {
                 if (mempool.TryGetValue(hash, out Transaction tx))
-                    if (!AddTransaction(tx, false))
+                    if (!AddTransaction(tx, false))// 从缓存队列中读取添加到 context 中
                         return;
             }
+            // 添加分配字节费的交易 矿工手续费交易
             if (!AddTransaction(message.MinerTransaction, true)) return;
             if (context.Transactions.Count < context.TransactionHashes.Length)
             {
@@ -356,13 +391,19 @@ namespace Neo.Consensus
             }
         }
 
+        /// <summary>
+        /// 发起更新视图请求
+        /// </summary>
         private void RequestChangeView()
         {
             context.State |= ConsensusState.ViewChanging;
             context.ExpectedView[context.MyIndex]++;
             Log($"request change view: height={context.BlockIndex} view={context.ViewNumber} nv={context.ExpectedView[context.MyIndex]} state={context.State}");
+            // 重置视图周期
             timer.Change(TimeSpan.FromSeconds(Blockchain.SecondsPerBlock << (context.ExpectedView[context.MyIndex] + 1)), Timeout.InfiniteTimeSpan);
+            // 签名并广播更新视图消息
             SignAndRelay(context.MakeChangeView());
+            // 检查是否可以更新视图
             CheckExpectedView(context.ExpectedView[context.MyIndex]);
         }
 

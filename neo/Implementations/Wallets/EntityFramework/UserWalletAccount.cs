@@ -17,5 +17,20 @@ namespace Neo.Implementations.Wallets.EntityFramework
         {
             return Key;
         }
+
+        public override string GetPrivateKey()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public override string GetWIFKey()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public override void Print()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

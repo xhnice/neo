@@ -7,14 +7,14 @@ namespace Neo.Network.Payloads
 {
     public class VersionPayload : ISerializable
     {
-        public uint Version;
-        public ulong Services;
-        public uint Timestamp;
-        public ushort Port;
-        public uint Nonce;
-        public string UserAgent;
-        public uint StartHeight;
-        public bool Relay;
+        public uint Version;// 协议版本
+        public ulong Services;// 节点提供的服务
+        public uint Timestamp;// 当前时间
+        public ushort Port; // 监听的端口，如果不监听则为0
+        public uint Nonce;// 用于区分相同公网IP的节点
+        public string UserAgent;// 客户端标识
+        public uint StartHeight;// 区块链高度
+        public bool Relay;// 是否并转发
 
         public int Size => sizeof(uint) + sizeof(ulong) + sizeof(uint) + sizeof(ushort) + sizeof(uint) + UserAgent.GetVarSize() + sizeof(uint) + sizeof(bool);
 

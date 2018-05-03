@@ -37,6 +37,7 @@ namespace Neo.Wallets
 
         public WalletAccount CreateAccount()
         {
+            //Console.WriteLine("New NEO");
             byte[] privateKey = new byte[32];
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
             {
@@ -137,6 +138,15 @@ namespace Neo.Wallets
             return GetCoins(GetAccounts().Select(p => p.ScriptHash));
         }
 
+        /// <summary>
+        /// 获取私钥
+        /// </summary>
+        /// <param name="nep2"></param>
+        /// <param name="passphrase"></param>
+        /// <param name="N"></param>
+        /// <param name="r"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
         public static byte[] GetPrivateKeyFromNEP2(string nep2, string passphrase, int N = 16384, int r = 8, int p = 8)
         {
             if (nep2 == null) throw new ArgumentNullException(nameof(nep2));
@@ -155,6 +165,40 @@ namespace Neo.Wallets
             Cryptography.ECC.ECPoint pubkey = Cryptography.ECC.ECCurve.Secp256r1.G * prikey;
             UInt160 script_hash = Contract.CreateSignatureRedeemScript(pubkey).ToScriptHash();
             string address = ToAddress(script_hash);
+            if (!Encoding.ASCII.GetBytes(address).Sha256().Sha256().Take(4).SequenceEqual(addresshash))
+                throw new FormatException();
+            return prikey;
+        }
+
+        /// <summary>
+        /// 无密码获取 NEP2 私钥                  
+        /// Add Code override
+        /// </summary>
+        /// <param name="nep2"></param>
+        /// <param name="N"></param>
+        /// <param name="r"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        public static byte[] GetPrivateKeyFromNEP2(string nep2, int N = 16384, int r = 8, int p = 8)
+        {
+            if (nep2 == null) throw new ArgumentNullException(nameof(nep2));
+            //if (passphrase == null) throw new ArgumentNullException(nameof(passphrase));
+            byte[] data = nep2.Base58CheckDecode();
+            if (data.Length != 39 || data[0] != 0x01 || data[1] != 0x42 || data[2] != 0xe0)
+                throw new FormatException();
+            byte[] addresshash = new byte[4];
+            Buffer.BlockCopy(data, 3, addresshash, 0, 4);
+            //byte[] derivedkey = SCrypt.DeriveKey(Encoding.UTF8.GetBytes(passphrase), addresshash, N, r, p, 64);
+            byte[] derivedkey = SCrypt.DeriveKey(addresshash, N, r, p, 64);
+            byte[] derivedhalf1 = derivedkey.Take(32).ToArray();
+            byte[] derivedhalf2 = derivedkey.Skip(32).ToArray();
+            byte[] encryptedkey = new byte[32];
+            Buffer.BlockCopy(data, 7, encryptedkey, 0, 32);
+            byte[] prikey = XOR(encryptedkey.AES256Decrypt(derivedhalf2), derivedhalf1);
+            Cryptography.ECC.ECPoint pubkey = Cryptography.ECC.ECCurve.Secp256r1.G * prikey;
+            UInt160 script_hash = Contract.CreateSignatureRedeemScript(pubkey).ToScriptHash();
+            string address = ToAddress(script_hash);
+            //Console.WriteLine($"Wallet Address: {address}");
             if (!Encoding.ASCII.GetBytes(address).Sha256().Sha256().Take(4).SequenceEqual(addresshash))
                 throw new FormatException();
             return prikey;
@@ -204,7 +248,17 @@ namespace Neo.Wallets
 
         public virtual WalletAccount Import(string nep2, string passphrase)
         {
-            byte[] privateKey = GetPrivateKeyFromNEP2(nep2, passphrase);
+            //byte[] privateKey = GetPrivateKeyFromNEP2(nep2, passphrase);
+            // 增加无密码分支 AddCode
+            byte[] privateKey;
+            if (string.IsNullOrEmpty(passphrase))
+            {
+                privateKey = GetPrivateKeyFromNEP2(nep2);
+            }
+            else
+            {
+                privateKey = GetPrivateKeyFromNEP2(nep2, passphrase);
+            }
             WalletAccount account = CreateAccount(privateKey);
             Array.Clear(privateKey, 0, privateKey.Length);
             return account;
@@ -389,6 +443,11 @@ namespace Neo.Wallets
             return fSuccess;
         }
 
+        /// <summary>
+        /// 生成 Address
+        /// </summary>
+        /// <param name="scriptHash"></param>
+        /// <returns></returns>
         public static string ToAddress(UInt160 scriptHash)
         {
             byte[] data = new byte[21];

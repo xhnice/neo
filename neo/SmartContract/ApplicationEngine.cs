@@ -317,8 +317,9 @@ namespace Neo.SmartContract
                 {
                     if (CurrentContext.InstructionPointer < CurrentContext.Script.Length)
                     {
+                        // 读取下一条指令
                         OpCode nextOpcode = CurrentContext.NextInstruction;
-
+                        // 按指令收费
                         gas_consumed = checked(gas_consumed + GetPrice(nextOpcode) * ratio);
                         if (!testMode && gas_consumed > gas_amount)
                         {
@@ -337,6 +338,7 @@ namespace Neo.SmartContract
                             return false;
                         }
                     }
+                    // 执行
                     StepInto();
                 }
             }

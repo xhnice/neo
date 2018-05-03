@@ -21,7 +21,8 @@ namespace Neo.Implementations.Wallets.NEP6
         private string name;
         private Version version;
         public readonly ScryptParameters Scrypt;
-        private readonly Dictionary<UInt160, NEP6Account> accounts;
+        private readonly Dictionary<UInt160, NEP6Account> accounts;// 钱包地址列表
+
         private readonly JObject extra;
         private readonly Dictionary<UInt256, Transaction> unconfirmed = new Dictionary<UInt256, Transaction>();
 
@@ -31,18 +32,27 @@ namespace Neo.Implementations.Wallets.NEP6
 
         public NEP6Wallet(string path, string name = null)
         {
+            // 以文件的形式打开钱包
             this.path = path;
-            if (File.Exists(path))
+            //Console.WriteLine($"NEP6Wallet Path: {this.path}");
+            if (File.Exists(path)) // 通过文件加载钱包
             {
+                //Console.WriteLine($"NEP6Wallet Path: {this.path}");
                 JObject wallet;
                 using (StreamReader reader = new StreamReader(path))
                 {
                     wallet = JObject.Parse(reader);
                 }
+                //Console.WriteLine($"Wallet Name: {wallet["version"].AsString()}");
                 this.name = wallet["name"]?.AsString();
                 this.version = Version.Parse(wallet["version"].AsString());
                 this.Scrypt = ScryptParameters.FromJson(wallet["scrypt"]);
+                // 把文件中的账号信息转换成 NEP6Account 并加入到 accounts  键名是  ScriptHash
                 this.accounts = ((JArray)wallet["accounts"]).Select(p => NEP6Account.FromJson(p, this)).ToDictionary(p => p.ScriptHash);
+                //foreach (UInt160 key in this.accounts.Keys)
+                //{
+                //    this.accounts[key].GetKey();
+                //}
                 this.extra = wallet["extra"];
                 WalletIndexer.RegisterAccounts(accounts.Keys);
             }
@@ -55,6 +65,73 @@ namespace Neo.Implementations.Wallets.NEP6
                 this.extra = JObject.Null;
             }
             WalletIndexer.BalanceChanged += WalletIndexer_BalanceChanged;
+        }
+
+        /// <summary>
+        /// 使用wifkey或nep2key初始化钱包
+        /// AddCode
+        /// </summary>
+        /// <param name="wifKey"></param>
+        /// <param name="nep2key"></param>
+        /// <param name="password"></param>
+        /// <param name="name"></param>
+        public NEP6Wallet(string wifKey, string nep2key, string password, string name = null)
+        {
+            this.name = name;
+            this.version = Version.Parse("1.0");
+            this.accounts = new Dictionary<UInt160, NEP6Account>();
+            this.Scrypt = ScryptParameters.Default;
+            this.extra = JObject.Null;
+            // 以Wif私钥的方式打开钱包 add code
+            if (!string.IsNullOrEmpty(wifKey))
+            {
+                var account = Import(wifKey);
+                account.GetKey();
+                account.Print();
+                WalletIndexer.RegisterAccounts(accounts.Keys);
+                WalletIndexer.BalanceChanged += WalletIndexer_BalanceChanged;
+
+            }
+            else if (!string.IsNullOrEmpty(nep2key))
+            {
+                this.password = password;
+                //Console.WriteLine($"password: {password}");
+                var account = Import(nep2key, password);
+                account.GetKey();
+                account.Print();
+                WalletIndexer.RegisterAccounts(accounts.Keys);
+                WalletIndexer.BalanceChanged += WalletIndexer_BalanceChanged;
+            }
+        }
+
+        /// <summary>
+        /// 使用公钥初始化钱包
+        /// Add Code
+        /// </summary>
+        /// <param name="publicKey"></param>
+        /// <param name="address"></param>
+        /// <param name="name"></param>
+        public NEP6Wallet(string publicKey, string address, string name)
+        {
+            this.name = name;
+            this.version = Version.Parse("1.0");
+            this.accounts = new Dictionary<UInt160, NEP6Account>();
+            this.Scrypt = ScryptParameters.Default;
+            this.extra = JObject.Null;
+            var accout = ImportFromPublicKey(publicKey);
+            //account.GetKey();
+            WalletIndexer.RegisterAccounts(accounts.Keys);
+            WalletIndexer.BalanceChanged += WalletIndexer_BalanceChanged;
+        }
+
+        /// <summary>
+        /// 无参默认构造函数 无任何实现代码
+        /// Add Code
+        /// </summary>
+        public NEP6Wallet()
+        {
+            // 设置默认path
+            this.path = "E";
         }
 
         private void AddAccount(NEP6Account account, bool is_import)
@@ -163,7 +240,16 @@ namespace Neo.Implementations.Wallets.NEP6
 
         public KeyPair DecryptKey(string nep2key)
         {
-            return new KeyPair(GetPrivateKeyFromNEP2(nep2key, password, Scrypt.N, Scrypt.R, Scrypt.P));
+            //return new KeyPair(GetPrivateKeyFromNEP2(nep2key, password, Scrypt.N, Scrypt.R, Scrypt.P));
+            // 增加无密码分支  AddCode
+            if (string.IsNullOrEmpty(password))
+            {
+                return new KeyPair(GetPrivateKeyFromNEP2(nep2key, Scrypt.N, Scrypt.R, Scrypt.P));
+            }
+            else
+            {
+                return new KeyPair(GetPrivateKeyFromNEP2(nep2key, password, Scrypt.N, Scrypt.R, Scrypt.P));
+            }
         }
 
         public override bool DeleteAccount(UInt160 scriptHash)
@@ -208,6 +294,11 @@ namespace Neo.Implementations.Wallets.NEP6
             }
         }
 
+        /// <summary>
+        /// 获取余额
+        /// </summary>
+        /// <param name="accounts">ScriptHash</param>
+        /// <returns></returns>
         public override IEnumerable<Coin> GetCoins(IEnumerable<UInt160> accounts)
         {
             if (unconfirmed.Count == 0)
@@ -294,6 +385,11 @@ namespace Neo.Implementations.Wallets.NEP6
             return account;
         }
 
+        /// <summary>
+        /// 使用Wif Key 私钥导入钱包
+        /// </summary>
+        /// <param name="wif">Wif key</param>
+        /// <returns>钱包账号</returns>
         public override WalletAccount Import(string wif)
         {
             KeyPair key = new KeyPair(GetPrivateKeyFromWIF(wif));
@@ -312,9 +408,26 @@ namespace Neo.Implementations.Wallets.NEP6
             return account;
         }
 
+        /// <summary>
+        /// 使用Nep2key 和 密码 导入钱包
+        /// </summary>
+        /// <param name="nep2">nep2key</param>
+        /// <param name="passphrase">密码</param>
+        /// <returns>钱包账号</returns>
         public override WalletAccount Import(string nep2, string passphrase)
         {
-            KeyPair key = new KeyPair(GetPrivateKeyFromNEP2(nep2, passphrase));
+            //KeyPair key = new KeyPair(GetPrivateKeyFromNEP2(nep2, passphrase));
+            // 增加无密码分支  AddCode
+            //Console.WriteLine("Import 1");
+            KeyPair key;
+            if (string.IsNullOrEmpty(passphrase))
+            {
+                key = new KeyPair(GetPrivateKeyFromNEP2(nep2));
+            } else
+            {
+                key = new KeyPair(GetPrivateKeyFromNEP2(nep2, passphrase));
+            }
+            //Console.WriteLine("Import 2");
             NEP6Contract contract = new NEP6Contract
             {
                 Script = Contract.CreateSignatureRedeemScript(key.PublicKey),
@@ -322,6 +435,8 @@ namespace Neo.Implementations.Wallets.NEP6
                 ParameterNames = new[] { "signature" },
                 Deployed = false
             };
+            //Console.WriteLine("Import 3");
+            //Console.WriteLine($"ScriptHash: {contract.ScriptHash}");
             NEP6Account account;
             if (Scrypt.N == 16384 && Scrypt.R == 8 && Scrypt.P == 8)
                 account = new NEP6Account(this, contract.ScriptHash, nep2);
@@ -330,6 +445,57 @@ namespace Neo.Implementations.Wallets.NEP6
             account.Contract = contract;
             AddAccount(account, true);
             return account;
+        }
+
+        /// <summary>
+        /// 从公钥导入钱包  使用一个假的私钥
+        /// Add Code
+        /// </summary>
+        /// <param name="publicKey">公钥</param>
+        /// <returns>钱包账号</returns>
+        public WalletAccount ImportFromPublicKey(string publicKey)
+        {
+            //Console.WriteLine($"ScriptHash1: {publicKey}");
+            KeyPair key = new KeyPair(publicKey);
+            //Console.WriteLine($"ScriptHash2: {publicKey}");
+            NEP6Contract contract = new NEP6Contract
+            {
+                Script = Contract.CreateSignatureRedeemScript(key.PublicKey),
+                ParameterList = new[] { ContractParameterType.Signature },
+                ParameterNames = new[] { "signature" },
+                Deployed = false
+            };
+            //Console.WriteLine("Import 3");
+            //Console.WriteLine($"ScriptHash: {contract.ScriptHash}");
+            NEP6Account account;
+            if (Scrypt.N == 16384 && Scrypt.R == 8 && Scrypt.P == 8)
+                account = new NEP6Account(this, contract.ScriptHash);
+            else
+                account = new NEP6Account(this, contract.ScriptHash, key, null);
+            account.Contract = contract;
+            AddAccount(account, true);
+            return account;
+        }
+
+        /// <summary>
+        /// 注册本地钱包
+        /// Add Code
+        /// </summary>
+        /// <param name="publicKey">公钥</param>
+        public void RegisterLocalWallet(string publicKey)
+        {
+            KeyPair key = new KeyPair(publicKey);
+            NEP6Contract contract = new NEP6Contract
+            {
+                Script = Contract.CreateSignatureRedeemScript(key.PublicKey),
+                ParameterList = new[] { ContractParameterType.Signature },
+                ParameterNames = new[] { "signature" },
+                Deployed = false
+            };
+            Dictionary<UInt160, UInt160> keys = new Dictionary<UInt160, UInt160>();
+            keys.Add(contract.ScriptHash, contract.ScriptHash);
+            Console.WriteLine($"ScriptHash: {contract.ScriptHash.ToString()}");
+            WalletIndexer.RegisterAccounts(keys.Keys);
         }
 
         internal void Lock()
@@ -353,6 +519,9 @@ namespace Neo.Implementations.Wallets.NEP6
             }
         }
 
+        /// <summary>
+        /// 存储钱包信息到 Json
+        /// </summary>
         public void Save()
         {
             JObject wallet = new JObject();
@@ -364,14 +533,25 @@ namespace Neo.Implementations.Wallets.NEP6
             File.WriteAllText(path, wallet.ToString());
         }
 
+        /// <summary>
+        /// 解锁钱包文件  主要用于密码验证
+        /// </summary>
+        /// <param name="password"></param>
+        /// <returns></returns>
         public IDisposable Unlock(string password)
         {
             if (!VerifyPassword(password))
                 throw new CryptographicException();
             this.password = password;
+            //Console.WriteLine($"Unlock password: {password}");
             return new WalletLocker(this);
         }
 
+        /// <summary>
+        /// 验证密码是否有效
+        /// </summary>
+        /// <param name="password"></param>
+        /// <returns></returns>
         public override bool VerifyPassword(string password)
         {
             lock (accounts)
@@ -382,25 +562,38 @@ namespace Neo.Implementations.Wallets.NEP6
                     account = accounts.Values.FirstOrDefault(p => p.HasKey);
                 }
                 if (account == null) return true;
+                //Console.WriteLine($"NEP6 VerifyPassword password: {password}");
                 if (account.Decrypted)
                 {
+                    //Console.WriteLine($"NEP6 VerifyPassword password1: {password}");
                     return account.VerifyPassword(password);
                 }
                 else
                 {
                     try
                     {
-                        account.GetKey(password);
+                        //Console.WriteLine($"NEP6Wallet account: {account.ToJson().AsString()}");
+                        //Console.WriteLine($"Account Key: {account.Address}");
+                        //Console.WriteLine($"NEP6 VerifyPassword password2: {password}");
+                        //Console.WriteLine($"WIFKey: {account.GetWIFKey()}");
+                        account.GetKey(password); // 获取私钥
+                        //Console.WriteLine($"WIFKey: {account.GetWIFKey()}");
                         return true;
                     }
                     catch (FormatException)
                     {
+                        //Console.WriteLine($"NEP6 VerifyPassword password2 Exception: {password}");
                         return false;
                     }
                 }
             }
         }
 
+        /// <summary>
+        /// 钱包全额索引更新
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void WalletIndexer_BalanceChanged(object sender, BalanceEventArgs e)
         {
             lock (unconfirmed)
@@ -422,6 +615,27 @@ namespace Neo.Implementations.Wallets.NEP6
                     Time = e.Time
                 });
             }
+        }
+
+        /// <summary>
+        /// 打开钱包
+        /// </summary>
+        public void OpenWallet()
+        {
+            // 设置钱包文件目录
+            string walletPath = this.path;
+            if (string.IsNullOrEmpty(this.path))
+            {
+                walletPath = "wallet.json";
+            }
+            if (!File.Exists(this.path))
+            {
+                // 创建钱包并保存
+
+                // 创建钱包文件
+
+            }
+            // 打开钱包
         }
     }
 }

@@ -15,11 +15,15 @@ namespace Neo.Wallets
 
         public UInt160 PublicKeyHash => PublicKey.EncodePoint(true).ToScriptHash();
 
+
         public KeyPair(byte[] privateKey)
         {
             if (privateKey.Length != 32 && privateKey.Length != 96 && privateKey.Length != 104)
                 throw new ArgumentException();
             this.PrivateKey = new byte[32];
+            //Console.WriteLine("PrivateKey: ");
+            //Console.WriteLine(privateKey.ToHexString());
+            // 复制私钥
             Buffer.BlockCopy(privateKey, privateKey.Length - 32, PrivateKey, 0, 32);
             if (privateKey.Length == 32)
             {
@@ -29,6 +33,26 @@ namespace Neo.Wallets
             {
                 this.PublicKey = Cryptography.ECC.ECPoint.FromBytes(privateKey, Cryptography.ECC.ECCurve.Secp256r1);
             }
+            // 公钥和ECPoint互转
+            //Console.WriteLine($"ECPoint: {Cryptography.ECC.ECPoint.Parse(this.ToString(), Cryptography.ECC.ECCurve.Secp256r1).ToString()}");
+#if NET47
+            ProtectedMemory.Protect(PrivateKey, MemoryProtectionScope.SameProcess);
+#endif
+        }
+
+        /// <summary>
+        /// 使用公钥生成key pair
+        /// Add Code
+        /// </summary>
+        /// <param name="publicKey"></param>
+        public KeyPair(string publicKey)
+        {
+            if (publicKey.Length != 66)
+            {
+                throw new ArgumentException();
+            }
+            this.PrivateKey = new byte[32];
+            this.PublicKey = Cryptography.ECC.ECPoint.Parse(publicKey, Cryptography.ECC.ECCurve.Secp256r1);
 #if NET47
             ProtectedMemory.Protect(PrivateKey, MemoryProtectionScope.SameProcess);
 #endif
@@ -55,6 +79,10 @@ namespace Neo.Wallets
             return Equals(obj as KeyPair);
         }
 
+        /// <summary>
+        /// 导出Wif私钥
+        /// </summary>
+        /// <returns></returns>
         public string Export()
         {
             using (Decrypt())
@@ -69,14 +97,31 @@ namespace Neo.Wallets
             }
         }
 
+        /// <summary>
+        /// 导出私钥
+        /// </summary>
+        /// <param name="passphrase">密码</param>
+        /// <param name="N">scrypt</param>
+        /// <param name="r">scrypt</param>
+        /// <param name="p">scrypt</param>
+        /// <returns>WIF私钥</returns>
         public string Export(string passphrase, int N = 16384, int r = 8, int p = 8)
         {
+            //Console.WriteLine($"Export passphrase: {passphrase}");
             using (Decrypt())
             {
                 UInt160 script_hash = Contract.CreateSignatureRedeemScript(PublicKey).ToScriptHash();
                 string address = Wallet.ToAddress(script_hash);
                 byte[] addresshash = Encoding.ASCII.GetBytes(address).Sha256().Sha256().Take(4).ToArray();
-                byte[] derivedkey = SCrypt.DeriveKey(Encoding.UTF8.GetBytes(passphrase), addresshash, N, r, p, 64);
+                byte[] derivedkey;
+                if (string.IsNullOrEmpty(passphrase))
+                {
+                    derivedkey = SCrypt.DeriveKey(addresshash, N, r, p, 64); // 无密码
+                }
+                else
+                {
+                    derivedkey = SCrypt.DeriveKey(Encoding.UTF8.GetBytes(passphrase), addresshash, N, r, p, 64);
+                }
                 byte[] derivedhalf1 = derivedkey.Take(32).ToArray();
                 byte[] derivedhalf2 = derivedkey.Skip(32).ToArray();
                 byte[] encryptedkey = XOR(PrivateKey, derivedhalf1).AES256Encrypt(derivedhalf2);

@@ -30,11 +30,17 @@ namespace Neo.Consensus
 
         public int M => Validators.Length - (Validators.Length - 1) / 3;
 
+        /// <summary>
+        /// 更新共识视图
+        /// </summary>
+        /// <param name="view_number">新的视图编号</param>
         public void ChangeView(byte view_number)
         {
             int p = ((int)BlockIndex - view_number) % Validators.Length;
+            // 设置共识状态为已发送签名
             State &= ConsensusState.SignatureSent;
             ViewNumber = view_number;
+            // 议长编号
             PrimaryIndex = p >= 0 ? (uint)p : (uint)(p + Validators.Length);
             if (State == ConsensusState.Initial)
             {
@@ -108,21 +114,26 @@ namespace Neo.Consensus
             });
         }
 
+        /// <summary>
+        /// 共识状态重置，准备发起新一轮共识
+        /// </summary>
+        /// <param name="wallet">钱包</param>
         public void Reset(Wallet wallet)
         {
-            State = ConsensusState.Initial;
-            PrevHash = Blockchain.Default.CurrentBlockHash;
-            BlockIndex = Blockchain.Default.Height + 1;
-            ViewNumber = 0;
-            Validators = Blockchain.Default.GetValidators();
-            MyIndex = -1;
-            PrimaryIndex = BlockIndex % (uint)Validators.Length;
+            State = ConsensusState.Initial;// 共识状态为  Initial
+            PrevHash = Blockchain.Default.CurrentBlockHash; // 获取上一个区块
+            BlockIndex = Blockchain.Default.Height + 1; // 新区块下标
+            ViewNumber = 0;// 初始状态 视图编号为0
+            Validators = Blockchain.Default.GetValidators(); // 获取议员信息
+            MyIndex = -1;// 当前议员下标初始化
+            PrimaryIndex = BlockIndex % (uint)Validators.Length;// 确定议长 p = (h - v)mod n 此处 v = 0
             TransactionHashes = null;
             Signatures = new byte[Validators.Length][];
-            ExpectedView = new byte[Validators.Length];
+            ExpectedView = new byte[Validators.Length];// 用于保存众议员当前视图编号
             KeyPair = null;
             for (int i = 0; i < Validators.Length; i++)
             {
+                // 获取自己的议员编号以及密钥
                 WalletAccount account = wallet.GetAccount(Validators[i]);
                 if (account?.HasKey == true)
                 {

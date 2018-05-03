@@ -13,10 +13,10 @@ namespace Neo.Network
     {
         private const int PayloadMaxSize = 0x02000000;
 
-        public static readonly uint Magic = Settings.Default.Magic;
-        public string Command;
-        public uint Checksum;
-        public byte[] Payload;
+        public static readonly uint Magic = Settings.Default.Magic;// 协议标识号
+        public string Command; // 命令
+        public uint Checksum; //  检验和
+        public byte[] Payload; // 消息内容
 
         public int Size => sizeof(uint) + 12 + sizeof(int) + sizeof(uint) + Payload.Length;
 

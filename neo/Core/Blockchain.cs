@@ -330,6 +330,7 @@ namespace Neo.Core
         }
 
         private List<ECPoint> _validators = new List<ECPoint>();
+
         /// <summary>
         /// 获取下一个区块的记账人列表
         /// </summary>

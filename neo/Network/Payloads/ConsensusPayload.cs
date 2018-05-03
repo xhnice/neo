@@ -9,6 +9,9 @@ using System.IO;
 
 namespace Neo.Network.Payloads
 {
+    /// <summary>
+    /// 共识消息类
+    /// </summary>
     public class ConsensusPayload : IInventory
     {
         public uint Version;

@@ -16,6 +16,12 @@ namespace Neo.Wallets
 
         public abstract KeyPair GetKey();
 
+        public abstract string GetPrivateKey();
+
+        public abstract string GetWIFKey();
+
+        public abstract void Print();
+
         protected WalletAccount(UInt160 scriptHash)
         {
             this.ScriptHash = scriptHash;
