@@ -4,6 +4,7 @@ using Neo.SmartContract;
 using Neo.VM;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -348,6 +349,7 @@ namespace Neo.Wallets
         /// <returns></returns>
         public T MakeTransaction<T>(T tx, UInt160 from = null, UInt160 change_address = null, Fixed8 fee = default(Fixed8)) where T : Transaction
         {
+            //File.AppendAllText("wallet.log", $"from1: {from.ToString()}\n");
             if (tx.Outputs == null) tx.Outputs = new TransactionOutput[0];
             if (tx.Attributes == null) tx.Attributes = new TransactionAttribute[0];
             fee += tx.SystemFee;
@@ -534,6 +536,31 @@ namespace Neo.Wallets
                 if (account?.HasKey != true) continue;
                 KeyPair key = account.GetKey();
                 byte[] signature = context.Verifiable.Sign(key);
+                fSuccess |= context.AddSignature(account.Contract, key.PublicKey, signature);
+            }
+            return fSuccess;
+        }
+
+        /// <summary>
+        /// 交易签名
+        /// AddCode
+        /// </summary>
+        /// <param name="context">交易上下文</param>
+        /// <param name="privatekey">私钥</param>
+        /// <returns>结果</returns>
+        public bool Sign(ContractParametersContext context, string privatekey)
+        {
+            bool fSuccess = false;
+            foreach (UInt160 scriptHash in context.ScriptHashes)
+            {
+                WalletAccount account = GetAccount(scriptHash);
+                //if (account?.HasKey != true) continue; // 判断账号是否有nep2key 只读私有属性 只能通过构造函数赋值 所以不伪造
+                // 使用私钥生成钥匙
+                KeyPair key = new KeyPair(privatekey.HexToBytes());
+                byte[] signature = context.Verifiable.Sign(key);
+                //key.PrivateKey.ToHexString();
+                //key.PublicKey.EncodePoint(true).ToHexString();
+                //File.AppendAllText("wallet.log", $"privatekey: {key.PrivateKey.ToHexString()} \n publickey: {key.PublicKey.EncodePoint(true).ToHexString()}\n");
                 fSuccess |= context.AddSignature(account.Contract, key.PublicKey, signature);
             }
             return fSuccess;
