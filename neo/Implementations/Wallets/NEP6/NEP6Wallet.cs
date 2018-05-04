@@ -20,6 +20,7 @@ namespace Neo.Implementations.Wallets.NEP6
         private string password;
         private string name;
         private Version version;
+        private readonly int type;// 账号类型 同钱包文件的保存方式相关 AddCode
         public readonly ScryptParameters Scrypt;
         private readonly Dictionary<UInt160, NEP6Account> accounts;// 钱包地址列表
 
@@ -32,6 +33,7 @@ namespace Neo.Implementations.Wallets.NEP6
 
         public NEP6Wallet(string path, string name = null)
         {
+            this.type = 0;
             // 以文件的形式打开钱包
             this.path = path;
             //Console.WriteLine($"NEP6Wallet Path: {this.path}");
@@ -77,6 +79,7 @@ namespace Neo.Implementations.Wallets.NEP6
         /// <param name="name"></param>
         public NEP6Wallet(string wifKey, string nep2key, string password, string name = null)
         {
+            this.type = 0;
             this.name = name;
             this.version = Version.Parse("1.0");
             this.accounts = new Dictionary<UInt160, NEP6Account>();
@@ -113,6 +116,7 @@ namespace Neo.Implementations.Wallets.NEP6
         /// <param name="name"></param>
         public NEP6Wallet(string publicKey, string address, string name)
         {
+            this.type = 0;
             this.name = name;
             this.version = Version.Parse("1.0");
             this.accounts = new Dictionary<UInt160, NEP6Account>();
@@ -130,8 +134,46 @@ namespace Neo.Implementations.Wallets.NEP6
         /// </summary>
         public NEP6Wallet()
         {
+            this.type = 0;
             // 设置默认path
-            this.path = "E";
+            //this.path = "E";
+        }
+
+        /// <summary>
+        /// 使用钱包文件初始化钱包
+        /// 
+        /// Add Code
+        /// </summary>
+        /// <param name="path">钱包文件路径</param>
+        /// <param name="password">密码</param>
+        /// <param name="type">账号类型</param>
+        public NEP6Wallet(string path, string password, int type = 0)
+        {
+            this.type = type;
+            this.path = path;
+            // 钱包文件是否存在
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException();
+            }
+            // 打开钱包
+            JObject wallet;
+            using (StreamReader reader = new StreamReader(path))
+            {
+                wallet = JObject.Parse(reader);
+            }
+            //Console.WriteLine($"Wallet Name: {wallet["version"].AsString()}");
+            this.name = wallet["name"]?.AsString();
+            this.version = Version.Parse(wallet["version"].AsString());
+            this.Scrypt = ScryptParameters.FromJson(wallet["scrypt"]);
+            // 把文件中的账号信息转换成 NEP6Account 并加入到 accounts  键名是  ScriptHash
+            this.accounts = ((JArray)wallet["accounts"]).Select(p => NEP6Account.fromJson(p, this)).ToDictionary(p => p.ScriptHash);
+            //foreach (UInt160 key in this.accounts.Keys)
+            //{
+            //    this.accounts[key].GetKey();
+            //}
+            this.extra = wallet["extra"];
+            WalletIndexer.RegisterAccounts(accounts.Keys);
         }
 
         private void AddAccount(NEP6Account account, bool is_import)
@@ -524,11 +566,32 @@ namespace Neo.Implementations.Wallets.NEP6
         /// </summary>
         public void Save()
         {
+            if (this.type == 0) // 钱包保存方式  默认
+            {
+                JObject wallet = new JObject();
+                wallet["name"] = name;
+                wallet["version"] = version.ToString();
+                wallet["scrypt"] = Scrypt.ToJson();
+                wallet["accounts"] = new JArray(accounts.Values.Select(p => p.ToJson()));
+                wallet["extra"] = extra;
+                File.WriteAllText(path, wallet.ToString());
+            } else
+            {
+                save();
+            }
+        }
+
+        /// <summary>
+        /// 存储钱包信息到JSON
+        /// AddCode
+        /// </summary>
+        public void save()
+        {
             JObject wallet = new JObject();
             wallet["name"] = name;
             wallet["version"] = version.ToString();
             wallet["scrypt"] = Scrypt.ToJson();
-            wallet["accounts"] = new JArray(accounts.Values.Select(p => p.ToJson()));
+            wallet["accounts"] = new JArray(accounts.Values.Select(p => p.toJson()));
             wallet["extra"] = extra;
             File.WriteAllText(path, wallet.ToString());
         }
@@ -620,22 +683,20 @@ namespace Neo.Implementations.Wallets.NEP6
         /// <summary>
         /// 打开钱包
         /// </summary>
-        public void OpenWallet()
+        public void OpenWallet(string path)
         {
             // 设置钱包文件目录
-            string walletPath = this.path;
-            if (string.IsNullOrEmpty(this.path))
+            //string walletPath = this.path;
+            //if (string.IsNullOrEmpty(this.path))
+            //{
+            //    walletPath = "wallet.json";
+            //}
+            // 钱包文件是否存在
+            if (!File.Exists(path))
             {
-                walletPath = "wallet.json";
+                throw new FileNotFoundException();
             }
-            if (!File.Exists(this.path))
-            {
-                // 创建钱包并保存
-
-                // 创建钱包文件
-
-            }
-            // 打开钱包
+            
         }
     }
 }

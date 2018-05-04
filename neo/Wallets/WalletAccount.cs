@@ -1,4 +1,5 @@
-﻿using Neo.SmartContract;
+﻿using Neo.IO.Json;
+using Neo.SmartContract;
 
 namespace Neo.Wallets
 {
@@ -12,6 +13,9 @@ namespace Neo.Wallets
 
         public string Address => Wallet.ToAddress(ScriptHash);
         public abstract bool HasKey { get; }
+        /// <summary>
+        /// 是否无合约 Contract true 否  false 是
+        /// </summary>
         public bool WatchOnly => Contract == null;
 
         public abstract KeyPair GetKey();
@@ -21,6 +25,13 @@ namespace Neo.Wallets
         public abstract string GetWIFKey();
 
         public abstract void Print();
+
+        /// <summary>
+        /// 对外输出账号信息 private key and address
+        /// AddCode
+        /// </summary>
+        /// <returns>private key and address</returns>
+        public abstract JObject OutputJson();
 
         protected WalletAccount(UInt160 scriptHash)
         {

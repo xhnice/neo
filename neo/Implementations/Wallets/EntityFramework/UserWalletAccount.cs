@@ -1,4 +1,5 @@
-﻿using Neo.Wallets;
+﻿using Neo.IO.Json;
+using Neo.Wallets;
 
 namespace Neo.Implementations.Wallets.EntityFramework
 {
@@ -29,6 +30,11 @@ namespace Neo.Implementations.Wallets.EntityFramework
         }
 
         public override void Print()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public override JObject OutputJson()
         {
             throw new System.NotImplementedException();
         }

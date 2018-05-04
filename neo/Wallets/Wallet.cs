@@ -54,6 +54,11 @@ namespace Neo.Wallets
             return CreateAccount(contract, new KeyPair(privateKey));
         }
 
+        /// <summary>
+        /// 获取未花费的
+        /// </summary>
+        /// <param name="from"></param>
+        /// <returns></returns>
         public IEnumerable<Coin> FindUnspentCoins(params UInt160[] from)
         {
             IEnumerable<UInt160> accounts = from.Length > 0 ? from : GetAccounts().Where(p => !p.Lock && !p.WatchOnly).Select(p => p.ScriptHash);
@@ -86,19 +91,43 @@ namespace Neo.Wallets
             return GetAccount(Contract.CreateSignatureRedeemScript(pubkey).ToScriptHash());
         }
 
+        /// <summary>
+        /// 钱包中可用资产
+        /// </summary>
+        /// <param name="asset_id">资产ID</param>
+        /// <returns></returns>
         public Fixed8 GetAvailable(UInt256 asset_id)
         {
             return FindUnspentCoins().Where(p => p.Output.AssetId.Equals(asset_id)).Sum(p => p.Output.Value);
         }
 
-        public BigDecimal GetAvailable(UIntBase asset_id)
+        /// <summary>
+        /// 指定钱包账号可用资产
+        /// AddCode
+        /// </summary>
+        /// <param name="asset_id">资产ID</param>
+        /// <param name="address">账号</param>
+        /// <returns></returns>
+        public Fixed8 GetAvailable(UInt256 asset_id, string address)
+        {
+            return FindUnspentCoins(GetAccounts().Where(p => p.Address.Equals(address)).Select(p => p.ScriptHash).First()).Where(p => p.Output.AssetId.Equals(asset_id)).Sum(p => p.Output.Value);
+        }
+
+        /// <summary>
+        /// 可用智能合约资产
+        /// 增加了一个 address 参数
+        /// </summary>
+        /// <param name="asset_id"></param>
+        /// <returns></returns>
+        public BigDecimal GetAvailable(UIntBase asset_id, string address = "")
         {
             if (asset_id is UInt160 asset_id_160)
             {
                 byte[] script;
                 using (ScriptBuilder sb = new ScriptBuilder())
                 {
-                    foreach (UInt160 account in GetAccounts().Where(p => !p.WatchOnly).Select(p => p.ScriptHash))
+                    // 增加了使用 address 查询账号条件
+                    foreach (UInt160 account in GetAccounts().Where(p => !p.WatchOnly).Where(p => (string.IsNullOrEmpty(address) || p.Address.Equals(address))).Select(p => p.ScriptHash))
                         sb.EmitAppCall(asset_id_160, "balanceOf", account);
                     sb.Emit(OpCode.DEPTH, OpCode.PACK);
                     sb.EmitAppCall(asset_id_160, "decimals");
@@ -115,9 +144,26 @@ namespace Neo.Wallets
             }
         }
 
+        /// <summary>
+        /// 使用资产ID查询钱包资产
+        /// </summary>
+        /// <param name="asset_id">资产ID</param>
+        /// <returns>余额</returns>
         public Fixed8 GetBalance(UInt256 asset_id)
         {
             return GetCoins(GetAccounts().Select(p => p.ScriptHash)).Where(p => !p.State.HasFlag(CoinState.Spent) && p.Output.AssetId.Equals(asset_id)).Sum(p => p.Output.Value);
+        }
+
+        /// <summary>
+        /// 使用资产ID查询钱包中指定账号的资产
+        /// AddCode
+        /// </summary>
+        /// <param name="asset_id">资产ID</param>
+        /// <param name="address">账号</param>
+        /// <returns></returns>
+        public Fixed8 GetBalance(UInt256 asset_id, string address)
+        {
+            return GetCoins(GetAccounts().Where(p => p.Address.Equals(address)).Select(p => p.ScriptHash)).Where(p => !p.State.HasFlag(CoinState.Spent) && p.Output.AssetId.Equals(asset_id)).Sum(p => p.Output.Value); 
         }
 
         public virtual UInt160 GetChangeAddress()
@@ -136,6 +182,17 @@ namespace Neo.Wallets
         public IEnumerable<Coin> GetCoins()
         {
             return GetCoins(GetAccounts().Select(p => p.ScriptHash));
+        }
+
+        /// <summary>
+        /// 获取账号的币信息
+        /// AddCode
+        /// </summary>
+        /// <param name="address">账号</param>
+        /// <returns>币信息</returns>
+        public IEnumerable<Coin> GetCoins(string address)
+        {
+            return GetCoins(GetAccounts().Where(p => p.Address.Equals(address)).Select(p => p.ScriptHash));
         }
 
         /// <summary>
@@ -204,6 +261,11 @@ namespace Neo.Wallets
             return prikey;
         }
 
+        /// <summary>
+        /// 使用wif获取私钥
+        /// </summary>
+        /// <param name="wif"></param>
+        /// <returns></returns>
         public static byte[] GetPrivateKeyFromWIF(string wif)
         {
             if (wif == null) throw new ArgumentNullException();
@@ -238,6 +300,11 @@ namespace Neo.Wallets
             return account;
         }
 
+        /// <summary>
+        /// 使用wifkey导入钱包
+        /// </summary>
+        /// <param name="wif">wifkey</param>
+        /// <returns>钱包账号</returns>
         public virtual WalletAccount Import(string wif)
         {
             byte[] privateKey = GetPrivateKeyFromWIF(wif);
@@ -246,6 +313,12 @@ namespace Neo.Wallets
             return account;
         }
 
+        /// <summary>
+        /// 使用nep2key导入钱包
+        /// </summary>
+        /// <param name="nep2">nep2key</param>
+        /// <param name="passphrase">密码</param>
+        /// <returns>账号信息</returns>
         public virtual WalletAccount Import(string nep2, string passphrase)
         {
             //byte[] privateKey = GetPrivateKeyFromNEP2(nep2, passphrase);
@@ -264,6 +337,15 @@ namespace Neo.Wallets
             return account;
         }
 
+        /// <summary>
+        /// 创建交易
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="tx"></param>
+        /// <param name="from"></param>
+        /// <param name="change_address"></param>
+        /// <param name="fee"></param>
+        /// <returns></returns>
         public T MakeTransaction<T>(T tx, UInt160 from = null, UInt160 change_address = null, Fixed8 fee = default(Fixed8)) where T : Transaction
         {
             if (tx.Outputs == null) tx.Outputs = new TransactionOutput[0];
@@ -323,6 +405,15 @@ namespace Neo.Wallets
             return tx;
         }
 
+        /// <summary>
+        /// 创建交易
+        /// </summary>
+        /// <param name="attributes"></param>
+        /// <param name="outputs"></param>
+        /// <param name="from"></param>
+        /// <param name="change_address"></param>
+        /// <param name="fee"></param>
+        /// <returns></returns>
         public Transaction MakeTransaction(List<TransactionAttribute> attributes, IEnumerable<TransferOutput> outputs, UInt160 from = null, UInt160 change_address = null, Fixed8 fee = default(Fixed8))
         {
             var cOutputs = outputs.Where(p => !p.IsGlobalAsset).GroupBy(p => new
@@ -429,6 +520,11 @@ namespace Neo.Wallets
             return tx;
         }
 
+        /// <summary>
+        /// 签名
+        /// </summary>
+        /// <param name="context"></param>
+        /// <returns></returns>
         public bool Sign(ContractParametersContext context)
         {
             bool fSuccess = false;
@@ -444,10 +540,10 @@ namespace Neo.Wallets
         }
 
         /// <summary>
-        /// 生成 Address
+        /// 生成 Address scripthash 转账号
         /// </summary>
-        /// <param name="scriptHash"></param>
-        /// <returns></returns>
+        /// <param name="scriptHash">script hash</param>
+        /// <returns>账号</returns>
         public static string ToAddress(UInt160 scriptHash)
         {
             byte[] data = new byte[21];
@@ -456,6 +552,11 @@ namespace Neo.Wallets
             return data.Base58CheckEncode();
         }
 
+        /// <summary>
+        /// 账号转script hash
+        /// </summary>
+        /// <param name="address">账号</param>
+        /// <returns>script hash</returns>
         public static UInt160 ToScriptHash(string address)
         {
             byte[] data = address.Base58CheckDecode();
