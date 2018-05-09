@@ -88,7 +88,7 @@ namespace Neo.Implementations.Wallets.NEP6
             // 以Wif私钥的方式打开钱包 add code
             if (!string.IsNullOrEmpty(wifKey))
             {
-                var account = Import(wifKey);
+                var account = Import(wifKey, password);
                 account.GetKey();
                 account.Print();
                 WalletIndexer.RegisterAccounts(accounts.Keys);
