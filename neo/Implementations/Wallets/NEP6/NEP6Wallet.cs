@@ -141,7 +141,6 @@ namespace Neo.Implementations.Wallets.NEP6
 
         /// <summary>
         /// 使用钱包文件初始化钱包
-        /// 
         /// Add Code
         /// </summary>
         /// <param name="path">钱包文件路径</param>

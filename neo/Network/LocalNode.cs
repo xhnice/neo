@@ -41,10 +41,13 @@ namespace Neo.Network
         internal static readonly Dictionary<UInt256, DateTime> KnownHashes = new Dictionary<UInt256, DateTime>();
         internal readonly RelayCache RelayCache = new RelayCache(100);
 
-        private static readonly HashSet<IPEndPoint> unconnectedPeers = new HashSet<IPEndPoint>();
-        private static readonly HashSet<IPEndPoint> badPeers = new HashSet<IPEndPoint>();
-        internal readonly List<RemoteNode> connectedPeers = new List<RemoteNode>();
+        private static readonly HashSet<IPEndPoint> unconnectedPeers = new HashSet<IPEndPoint>(); // 未连接节点
+        private static readonly HashSet<IPEndPoint> badPeers = new HashSet<IPEndPoint>(); // 坏连接
+        internal readonly List<RemoteNode> connectedPeers = new List<RemoteNode>(); // 已连接
 
+        /// <summary>
+        /// P2P节点信息
+        /// </summary>
         internal static readonly HashSet<IPAddress> LocalAddresses = new HashSet<IPAddress>();
         internal ushort Port;
         internal readonly uint Nonce;

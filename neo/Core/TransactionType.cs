@@ -19,6 +19,7 @@ namespace Neo.Core
         /// </summary>
         [ReflectionCache(typeof(IssueTransaction))]
         IssueTransaction = 0x01,
+        
         [ReflectionCache(typeof(ClaimTransaction))]
         ClaimTransaction = 0x02,
         /// <summary>

@@ -30,6 +30,12 @@ namespace Neo.Implementations.Wallets.NEP6
             this.key = key;
         }
 
+        /// <summary>
+        /// 初始化账号 Add Code
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <param name="scriptHash"></param>
+        /// <param name="key"></param>
         public NEP6Account(NEP6Wallet wallet, UInt160 scriptHash, KeyPair key)
             : base(scriptHash)
         {

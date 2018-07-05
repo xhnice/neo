@@ -72,6 +72,11 @@ namespace Neo.Network
             Disconnect(false);
         }
 
+        /// <summary>
+        /// 把消息加入到消息队列
+        /// </summary>
+        /// <param name="command"></param>
+        /// <param name="payload"></param>
         public void EnqueueMessage(string command, ISerializable payload = null)
         {
             bool is_single = false;

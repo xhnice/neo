@@ -259,6 +259,7 @@ namespace Neo.Wallets
             {
                 WriteBatch batch = new WriteBatch();
                 ReadOptions options = new ReadOptions { FillCache = false };
+                // 删除索引数据
                 foreach (uint height in indexes.Keys)
                 {
                     byte[] groupId = db.Get(options, SliceBuilder.Begin(DataEntryPrefix.IX_Group).Add(height)).ToArray();
